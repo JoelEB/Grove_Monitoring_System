@@ -1,69 +1,61 @@
 #include <Adafruit_PCA9685.h>
 #include <SparkFunDS1307RTC.h>
 #include <SparkFunMicroOLED.h>
-#include <SparkFunSX1509.h>
 #include <Adafruit_MCP23017.h>
 #include "logo.h"
 #include <math.h>
 
-const int CURRENT_SENSOR_PIN = A5;
-
+//Digital I/O Expander Initialization
 Adafruit_MCP23017 mcp0, mcp1, mcp2, mcp3;
 
-//MicroOLED oled;
+//MicroOLED Initialization
 MicroOLED oled(MODE_I2C, D7, 0);    // Example I2C declaration RST=D7, DC=LOW (0)
-MicroOLED oled2(MODE_I2C, D6, 1);    // Example I2C declaration RST=D7, DC=LOW (0)
 
-//LED Driver
+//LED Driver Initialization
 Adafruit_PCA9685 ledDriver = Adafruit_PCA9685(0x40, true);  // Use the default address, but also turn on debugging
-
-// SX1509 I2C address (set by ADDR1 and ADDR0 (00 by default):
-const byte SX1509_ADDRESS = 0x3E;  // SX1509 I2C address
-SX1509 io; // Create an SX1509 object to be used throughout
-
-// SX1509 Pins:
-const byte SX1509_Switch0 = 0; // Switch for Pump
-const byte SX1509_Switch1 = 1; // Switch for ACC1
-const byte SX1509_Switch2 = 2; // Switch for ACC2
-const byte SX1509_Switch3 = 3; // Switch for ACC3
-const byte SX1509_Switch4 = 4; // Switch for ACC3
-
-//Touch Pot Address and Variables
-int i2cAddr_0 = 4; // Direct access at i2cAddr, indirect registers at i2cAddr+1
-int i2cAddr_1 = 8;
-uint8_t prevValue;
-uint8_t curValue;
-uint8_t prevValue2;
-uint8_t curValue2;
 
 //Analog Pins connected to MUXs
 const int rlyMuxIn = A2;
 const int ledMuxIn = A1;
 const int sensorMuxIn = A0;
 
-
 //variables for calculating Current on ACS712s
-float sensorValue = 0;
-float voltage;
-float current;
+const int NUM_SAMPLES = 10;
+const int CURRENT_SENSOR_PIN = A5;
+int sensorValue = 0;
+double voltage = 0;
+double current = 0;
+
+//Variables for calculating Watts and Currnet with AC Clamp
 const int avgSamples = 150;
 double currentWatts;
 //int calibratedWattage;
 
-
+//Current and Wattage Variables to send to Dashboard
 double LED1_A = 0;
 double LED2_A = 0;
 double R48V_A = 0;
 double R12V_A = 0;
 double R5V_A = 0;
 double PUMP_A = 0;
+int pumpARead = 0;
 double system_watts = 0;
 double system_amps = 0;
 
 
+//Variables to keep track of Relay and LED states
+int state_48V = 1;
+int state_PUMP = 0;
+int state_ACC1 = 0;
+int state_ACC2 = 0;
+int state_ACC3 = 0;
+int LED1state = 0;
+int LED2state = 0;
+int LED1value = 0;
+int LED2value = 0;
+
 //count variable for timing events
-int count = 0;
-int displayCounter = 0;
+int displayCounter = 100;
 ////////////////////////////////////////////////////////////
 void setup()
 {
@@ -72,8 +64,10 @@ void setup()
   Particle.function("Relay_ACC1", Relay_ACC1);
   Particle.function("Relay_ACC2", Relay_ACC2);
   Particle.function("Relay_ACC3", Relay_ACC3);
-  Particle.function("light_1", light_1);
-  Particle.function("light_2", light_2);
+  Particle.function("LED1analog", LED1analog);
+  Particle.function("LED2analog", LED2analog);
+  Particle.function("LED1digital", LED1digital);
+  Particle.function("LED2digital", LED2digital);
 
   Particle.variable("LED1_A", LED1_A);
   Particle.variable("LED2_A", LED2_A);
@@ -81,26 +75,30 @@ void setup()
   Particle.variable("R12V_A", R12V_A);
   Particle.variable("R5V_A", R5V_A);
   Particle.variable("PUMP_A", PUMP_A);
+  Particle.variable("pumpARead", pumpARead);
   Particle.variable("system_watts", system_watts);
   Particle.variable("system_amps", system_amps);
 
-  rtc.begin();
-  io.begin(SX1509_ADDRESS);
 
+  Particle.variable("state_48V", state_48V);
+  Particle.variable("state_PUMP", state_PUMP);
+  Particle.variable("state_ACC1", state_ACC1);
+  Particle.variable("state_ACC2", state_ACC2);
+  Particle.variable("state_ACC3", state_ACC3);
+  Particle.variable("LED1state", LED1state);
+  Particle.variable("LED2state", LED2state);
+  Particle.variable("LED1value", LED1value);
+  Particle.variable("LED2value", LED2value);
+
+
+  rtc.begin();
 
   oled.begin();    // Initialize the OLED
   oled.clear(ALL); // Clear the display's internal memory
   oled.clear(PAGE);
   oled.drawBitmap(openponics);
   oled.display();
-
-  oled2.begin();    // Initialize the OLED
-  oled2.clear(ALL); // Clear the display's internal memory
-  oled2.clear(PAGE);
-  oled2.drawBitmap(openponics);
-  oled2.display();
   delay(2000);
-
 
   ledDriver.begin();    // This calls Wire.begin()
   ledDriver.setPWMFreq(1000);     // Maximum PWM frequency is 1600
@@ -120,232 +118,151 @@ void setup()
 
   for(int i=0;i<16; i++)
   {
-
     mcp0.digitalWrite(i, LOW);
     mcp1.digitalWrite(i, LOW);
     mcp2.digitalWrite(i, LOW);
     mcp3.digitalWrite(i, LOW);
   }
-
-  //For Tocuh Pot
-  prevValue = curValue;
-  prevValue2 = curValue2;
-
-  //for current clamp
-  //calibratedWattage = getWatts(CURRENT_SENSOR_PIN);
-
-  //for SX1509
-  io.pinMode(SX1509_Switch0, INPUT_PULLUP);
-  io.pinMode(SX1509_Switch1, INPUT_PULLUP);
-  io.pinMode(SX1509_Switch2, INPUT_PULLUP);
-  io.pinMode(SX1509_Switch3, INPUT_PULLUP);
-  io.pinMode(SX1509_Switch4, INPUT_PULLUP);
-
-  //Initialize Relays all off except 48V
-  LED_R48V_enable();
-  light_1_OFF();
-  light_2_OFF();
-  pumpOff();
-  ACC1_Relay_Off();
-  ACC2_Relay_Off();
-  ACC3_Relay_Off();
-
-
 }
 ////////////////////////////////////////////////////////////
 void loop()
 {
-
-//checkIO();
-getPowerConsumption();
-printOLED1();
-//printOLED2();
+  setRelayandLEDstate();
+  if(displayCounter == 100)
+  {
+    getPowerConsumption();
+    printOLED1();
+  displayCounter = 0;
+  }
+  displayCounter++;
 
 }
 ////////////////////////////////////////////////////////////
-
-
-void checkIO()
+//////////Particle.functions to send to Node-Red////////////
+////////////////////////////////////////////////////////////
+int Relay_48V(String cmd) {
+  state_48V = atoi(cmd);
+  setRelayandLEDstate();
+}
+int Relay_PUMP(String cmd) {
+  state_PUMP = atoi(cmd);
+  setRelayandLEDstate();
+}
+int Relay_ACC1(String cmd) {
+  state_ACC1 = atoi(cmd);
+  setRelayandLEDstate();
+}
+int Relay_ACC2(String cmd) {
+  state_ACC2 = atoi(cmd);
+  setRelayandLEDstate();
+}
+int Relay_ACC3(String cmd) {
+  state_ACC3 = atoi(cmd);
+  setRelayandLEDstate();
+}
+int LED1digital(String cmd)
 {
-  if (io.digitalRead(SX1509_Switch0) == LOW)
+  bool ledState = atoi(cmd);
+  if(ledState == 1)
   {
-    pumpOn();
+    for (int led=0; led <= 2; led++)
+    {
+      ledDriver.setVal(led, 4096);
+    }
   }
   else
-    pumpOff();
-
-  if (io.digitalRead(SX1509_Switch1) == LOW)
   {
-    ACC1_Relay_On();
+    for (int led=0; led <= 2; led++)
+    {
+      ledDriver.setVal(led, 0);
+    }
+  }
+}
+int LED2digital(String cmd)
+{
+  bool ledState = atoi(cmd);
+  if(ledState == 1)
+  {
+    for (int led=3; led <= 5; led++)
+    {
+      ledDriver.setVal(led, 4096);
+    }
   }
   else
-    ACC1_Relay_Off();
-
-  if (io.digitalRead(SX1509_Switch2) == LOW)
   {
-    ACC2_Relay_On();
+    for (int led=3; led <= 5; led++)
+    {
+      ledDriver.setVal(led, 0);
+    }
   }
-  else
-    ACC2_Relay_Off();
-
-  if (io.digitalRead(SX1509_Switch3) == LOW)
-  {
-    ACC3_Relay_On();
-  }
-  else
-    ACC3_Relay_Off();
-
-  if (io.digitalRead(SX1509_Switch4) == LOW)
-  {
-    LED_R48V_enable();
-  }
-  else
-    LED_R48V_disable();
-
-  //Control LED 1 with TouchPot
-  curValue = ReadTpValue(i2cAddr_0); // faster I2C access than register read
-  if (curValue != prevValue)
-  {
+}
+int LED1analog(String cmd)
+{
+  int curValue = atoi(cmd);
     for (int led=0; led <= 2; led++)
     {
       ledDriver.setVal(led, map(curValue,0,255,0,4095));
     }
-    prevValue = curValue;
-  }
-  //Control LED2 with TouchPot
-  curValue2 = ReadTpValue(i2cAddr_1); // faster I2C access than register read
-  if (curValue2 != prevValue2)
-  {
+}
+int LED2analog(String cmd)
+{
+  int curValue = atoi(cmd);
     for (int led=3; led <= 5; led++)
     {
-      ledDriver.setVal(led, map(curValue2,0,255,0,4095));
+      ledDriver.setVal(led, map(curValue,0,255,0,4095));
     }
-    prevValue2 = curValue2;
-  }
-
-
-
 }
 ///////////////////////////////////////////////////////////
-//Particle.functions to send to Node-Red
-int Relay_48V(String cmd) {
-  bool relayState = atoi(cmd);
-  mcp1.digitalWrite(11, relayState);
-}
-int Relay_PUMP(String cmd) {
-  bool relayState = atoi(cmd);
-  mcp2.digitalWrite(11, relayState);
-}
-int Relay_ACC1(String cmd) {
-  bool relayState = atoi(cmd);
-  mcp2.digitalWrite(12, relayState);
-}
-int Relay_ACC2(String cmd) {
-  bool relayState = atoi(cmd);
-  mcp2.digitalWrite(13, relayState);
-}
-int Relay_ACC3(String cmd) {
-  bool relayState = atoi(cmd);
-  mcp2.digitalWrite(14, relayState);
-}
-
-int light_1(String cmd)
+void light_1_ON()
 {
-  bool ledState = atoi(cmd);
-  if(ledState == 1)
+  for (int led=0; led <= 2; led++)
   {
-    for (int led=0; led <= 2; led++)
-    {
-      ledDriver.setVal(led, 4096);
-    }
-  }
-  else
-  {
-    for (int led=0; led <= 2; led++)
-    {
-      ledDriver.setVal(led, 0);
-    }
+    ledDriver.setVal(led, 4096);
   }
 }
 
-int light_2(String cmd)
+void light_1_OFF()
 {
-  bool ledState = atoi(cmd);
-  if(ledState == 1)
+  for (int led=0; led <= 2; led++)
   {
-    for (int led=3; led <= 5; led++)
-    {
-      ledDriver.setVal(led, 4096);
-    }
+        ledDriver.setVal(led, 0);
   }
-  else
+
+}
+void light_2_ON()
+{
+  for (int led=3; led <= 5; led++)
   {
-    for (int led=3; led <= 5; led++)
-    {
-      ledDriver.setVal(led, 0);
-    }
+    ledDriver.setVal(led, 4096);
   }
 }
 
-////////////////////////////////////////////////////////////
-void LED_R48V_enable()
+void light_2_OFF()
 {
-    mcp1.digitalWrite(11, HIGH);
+  for (int led=3; led <= 5; led++)
+  {
+        ledDriver.setVal(led, 0);
+  }
 }
 ////////////////////////////////////////////////////////////
-void LED_R48V_disable()
+void setRelayandLEDstate()
 {
-    mcp1.digitalWrite(11, LOW);
-}
-////////////////////////////////////////////////////////////
-void pumpOn()
-{
-    mcp2.digitalWrite(11, HIGH);
-}
-////////////////////////////////////////////////////////////
-void pumpOff()
-{
-    mcp2.digitalWrite(11, LOW);
-}
-////////////////////////////////////////////////////////////
-void ACC1_Relay_On()
-{
-    mcp2.digitalWrite(12, HIGH);
-}
-////////////////////////////////////////////////////////////
-void ACC1_Relay_Off()
-{
-    mcp2.digitalWrite(12, LOW);
-}
-////////////////////////////////////////////////////////////
-void ACC2_Relay_On()
-{
-    mcp2.digitalWrite(13, HIGH);
-}
-////////////////////////////////////////////////////////////
-void ACC2_Relay_Off()
-{
-    mcp2.digitalWrite(13, LOW);
-}
-////////////////////////////////////////////////////////////
-void ACC3_Relay_On()
-{
-    mcp2.digitalWrite(14, HIGH);
-}
-////////////////////////////////////////////////////////////
-void ACC3_Relay_Off()
-{
-    mcp2.digitalWrite(14, LOW);
+  mcp1.digitalWrite(11, state_48V);
+  mcp2.digitalWrite(11, state_PUMP);
+  mcp2.digitalWrite(12, state_ACC1);
+  mcp2.digitalWrite(13, state_ACC2);
+  mcp2.digitalWrite(14, state_ACC3);
+
+  //Add LEDs
 }
 ////////////////////////////////////////////////////////////
 void printOLED1()
 {
 
-  if(displayCounter == 100)
-  {
   oled.clear(PAGE);
 
-  currentWatts = getWatts(CURRENT_SENSOR_PIN);
+  //Print current power consumption from current clamp
+  currentWatts = getCurrentPower_Clamp(CURRENT_SENSOR_PIN);
   oled.setCursor(0,0);
   oled.print("TOTAL PWR:");
   oled.setCursor(0,10);
@@ -355,122 +272,81 @@ void printOLED1()
   oled.print(currentWatts/120.0);
   oled.print("A");
 
-    rtc.update();
-    oled.setCursor(0,40);
-    oled.print(String(rtc.hour()) + ":"); // Print hour
-    if (rtc.minute() < 10)
-      oled.print('0'); // Print leading '0' for minute
-    oled.print(String(rtc.minute()) + ":"); // Print minute
-    if (rtc.second() < 10)
-      oled.print('0'); // Print leading '0' for second
-    oled.print(String(rtc.second())); // Print second
+  //Print current time from RTC
+  rtc.update();
+  oled.setCursor(0,40);
+  oled.print(String(rtc.hour()) + ":"); // Print hour
+  if (rtc.minute() < 10)
+    oled.print('0'); // Print leading '0' for minute
+  oled.print(String(rtc.minute()) + ":"); // Print minute
+  if (rtc.second() < 10)
+    oled.print('0'); // Print leading '0' for second
+  oled.print(String(rtc.second())); // Print second
 
   oled.display();
-  displayCounter = 0;
-  }
-  displayCounter++;
 
-}
-////////////////////////////////////////////////////////////
-void printOLED2()
-{
-
-
-  //oled2.clear(PAGE);
-  //oled2.display();
 }
 ////////////////////////////////////////////////////////////
 void getPowerConsumption()
 {
   setMuxLED1();
-  currentSense(ledMuxIn);//give an Analog Pin to read
-  //LED1_V = int(voltage);
-  if(current < 0)
-  LED1_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(ledMuxIn);//give an Analog Pin to read
   LED1_A = current;
 
   setMuxLED2();
-  currentSense(ledMuxIn);//give an Analog Pin to read
-  //LED2_V = int(voltage);
-  if(current < 0)
-  LED2_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(ledMuxIn);//give an Analog Pin to read
   LED2_A = current;
 
   setMuxPump();
-  currentSense(rlyMuxIn);
-  if(current < 0)
-  PUMP_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(rlyMuxIn);
+  pumpARead = sensorValue;
   PUMP_A = current;
 
   setMux5V();
-  currentSense(rlyMuxIn);//give an Analog Pin to read
-  //R5V_V = int(voltage);
-  if(current < 0)
-  R5V_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(rlyMuxIn);//give an Analog Pin to read
   R5V_A = current;
 
   setMux12V();
-  currentSense(rlyMuxIn);//give an Analog Pin to read
-  //R12V_V = int(voltage);
-  if(current < 0)
-  R12V_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(rlyMuxIn);//give an Analog Pin to read
   R12V_A = current;
 
   setMux48V();
-  currentSense(rlyMuxIn);//give an Analog Pin to read
-  //R48V_V = int(voltage);
-  if(current < 0)
-  R48V_A = 0;
-  else
+  delay(10);
+  getCurrent_ACS712(rlyMuxIn);//give an Analog Pin to read
   R48V_A = current;
 
-  currentWatts = getWatts(CURRENT_SENSOR_PIN);
+  currentWatts = getCurrentPower_Clamp(CURRENT_SENSOR_PIN);
   system_watts = currentWatts;
   system_amps = currentWatts/120.0;
 }
 ////////////////////////////////////////////////////////////
-void currentSense(int pinValue)
+void getCurrent_ACS712(int pinValue)
 {
-
-  sensorValue = analogRead(pinValue);
-
-  // The on-board ADC is 12-bits -> 2^10 = 4096 -> 3.3V / 4096 ~= 0.8mV
-  // The voltage is in millivolts
-  voltage = sensorValue * 3.3/4096;
-
-  // This will calculate the actual current (in mA)
-  // Using the Vref and sensitivity settings you configure
-
-  current = (voltage - 2.5) / 0.100;
-
-/*
-  for(int i=0;i<avgSamples;i++)
+  //The on-board ADC is 12-bits -> 2^10 = 4096
+  for(int i=0;i<NUM_SAMPLES;i++)
   {
     sensorValue+=analogRead(pinValue); //read the current from sensor
     delay(2);
   }
-  sensorValue=sensorValue/avgSamples;//Taking Average of Samples
+  sensorValue = sensorValue/ NUM_SAMPLES;
+  voltage = (sensorValue * 3.3)/4095;
+  current = abs((voltage - 2.51) / 0.100);//0.082);
 
-  voltage = sensorValue * (3.3/4096.0);
+/*
+  sensorValue = analogRead(pinValue);
+  voltage = (sensorValue / 4095.0)* 5000;// Gets you mV
+  current = (voltage - 2500) / 100;
 
-  //current = (voltage - Vref) * sensitivity;
 
-  //((AvgAcs * (5.0 / 1024.0)) is converitng the read voltage in 0-5 volts
-  //2.5 is offset(I assumed that arduino is working on 5v so the viout at no current comes
-  //out to be 2.5 which is out offset. If your arduino is working on different voltage than
-  //you must change the offset according to the input voltage)
-  //0.185v(185mV) is rise in output voltage when 1A current flows at input
-  //current = (2.5 - voltage )/0.185;
-  current = (2.5 - (sensorValue * (3.3 / 4096.0)) )/0.100;
-  */
+*/
 }
 ////////////////////////////////////////////////////////////
-float getWatts(int pin) {
+float getCurrentPower_Clamp(int pin) {
 
   // RMS voltage
   const double vRMS = 120.0;      // Assumed or measured
@@ -567,71 +443,4 @@ void setMuxPump()
     mcp2.digitalWrite(9, LOW);
     mcp2.digitalWrite(10, HIGH);
     //set RLYMUX to Y5 output
-}
-///////////////////////////////////////////////////////////
-void light_1_ON()
-{
-  for (int led=0; led <= 2; led++)
-  {
-    ledDriver.setVal(led, 4096);
-  }
-}
-
-void light_1_OFF()
-{
-  for (int led=0; led <= 2; led++)
-  {
-        ledDriver.setVal(led, 0);
-  }
-
-}
-void light_2_ON()
-{
-  for (int led=3; led <= 5; led++)
-  {
-    ledDriver.setVal(led, 4096);
-  }
-}
-
-void light_2_OFF()
-{
-  for (int led=3; led <= 5; led++)
-  {
-        ledDriver.setVal(led, 0);
-  }
-
-}
-//////////////////////////////////////////////////
-// Write a Touch Potentiometer register
-void WriteTpReg(uint8_t addr, uint8_t data) {
-  Wire.beginTransmission(addr+1);
-  Wire.write('W');
-  Wire.write(addr);
-  Wire.write(data);
-  Wire.endTransmission();
-}
-
-// Get the Touch Potentiometer value
-uint8_t ReadTpValue(uint8_t addr) {
-  Wire.requestFrom(addr, 1);
-  if (Wire.available()) {
-    return Wire.read();
-  } else {
-    return 0;
-  }
-}
-
-// Read a Touch Potentiometer register
-uint8_t ReadTpReg(uint8_t addr) {
-  Wire.beginTransmission(addr+1);
-  Wire.write('R');
-  Wire.write(addr);
-  Wire.endTransmission();
-
-  Wire.requestFrom(addr+1, 1);
-  if (Wire.available()) {
-    return Wire.read();
-  } else {
-    return 0;
-  }
 }
