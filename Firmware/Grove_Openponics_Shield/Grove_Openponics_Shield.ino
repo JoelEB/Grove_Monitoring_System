@@ -20,16 +20,22 @@ const int ledMuxIn = A1;
 const int sensorMuxIn = A0;
 
 //variables for calculating Current on ACS712s
-const int NUM_SAMPLES = 10;
+const int NUM_SAMPLES = 100;
 const int CURRENT_SENSOR_PIN = A5;
 int sensorValue = 0;
+int average = 0;
 double voltage = 0;
 double current = 0;
 
 //Variables for calculating Watts and Currnet with AC Clamp
-const int avgSamples = 150;
+const int avgSamples = 500;
+// RMS voltage
+const double vRMS = 120.0;      // Assumed or measured
+// Parameters for measuring RMS current
+const double offset = 1.65;     // Half the ADC max voltage
+const int numTurns = 2000;      // 1:2000 transformer turns
+const int rBurden = 100;        // Burden resistor value
 double currentWatts;
-//int calibratedWattage;
 
 //Current and Wattage Variables to send to Dashboard
 double LED1_A = 0;
@@ -38,7 +44,6 @@ double R48V_A = 0;
 double R12V_A = 0;
 double R5V_A = 0;
 double PUMP_A = 0;
-int pumpARead = 0;
 double system_watts = 0;
 double system_amps = 0;
 
@@ -55,7 +60,7 @@ int LED1value = 0;
 int LED2value = 0;
 
 //count variable for timing events
-int displayCounter = 100;
+int displayCounter = 10;
 ////////////////////////////////////////////////////////////
 void setup()
 {
@@ -75,11 +80,10 @@ void setup()
   Particle.variable("R12V_A", R12V_A);
   Particle.variable("R5V_A", R5V_A);
   Particle.variable("PUMP_A", PUMP_A);
-  Particle.variable("pumpARead", pumpARead);
   Particle.variable("system_watts", system_watts);
   Particle.variable("system_amps", system_amps);
 
-
+/*
   Particle.variable("state_48V", state_48V);
   Particle.variable("state_PUMP", state_PUMP);
   Particle.variable("state_ACC1", state_ACC1);
@@ -89,7 +93,7 @@ void setup()
   Particle.variable("LED2state", LED2state);
   Particle.variable("LED1value", LED1value);
   Particle.variable("LED2value", LED2value);
-
+*/
 
   rtc.begin();
 
@@ -127,12 +131,12 @@ void setup()
 ////////////////////////////////////////////////////////////
 void loop()
 {
-  setRelayandLEDstate();
-  if(displayCounter == 100)
+  setRelaystate();
+  getPowerConsumption();
+  if(displayCounter == 10)
   {
-    getPowerConsumption();
     printOLED1();
-  displayCounter = 0;
+    displayCounter = 0;
   }
   displayCounter++;
 
@@ -142,23 +146,23 @@ void loop()
 ////////////////////////////////////////////////////////////
 int Relay_48V(String cmd) {
   state_48V = atoi(cmd);
-  setRelayandLEDstate();
+  setRelaystate();
 }
 int Relay_PUMP(String cmd) {
   state_PUMP = atoi(cmd);
-  setRelayandLEDstate();
+  setRelaystate();
 }
 int Relay_ACC1(String cmd) {
   state_ACC1 = atoi(cmd);
-  setRelayandLEDstate();
+  setRelaystate();
 }
 int Relay_ACC2(String cmd) {
   state_ACC2 = atoi(cmd);
-  setRelayandLEDstate();
+  setRelaystate();
 }
 int Relay_ACC3(String cmd) {
   state_ACC3 = atoi(cmd);
-  setRelayandLEDstate();
+  setRelaystate();
 }
 int LED1digital(String cmd)
 {
@@ -213,47 +217,46 @@ int LED2analog(String cmd)
     }
 }
 ///////////////////////////////////////////////////////////
-void light_1_ON()
-{
-  for (int led=0; led <= 2; led++)
-  {
-    ledDriver.setVal(led, 4096);
-  }
-}
-
-void light_1_OFF()
-{
-  for (int led=0; led <= 2; led++)
-  {
-        ledDriver.setVal(led, 0);
-  }
-
-}
-void light_2_ON()
-{
-  for (int led=3; led <= 5; led++)
-  {
-    ledDriver.setVal(led, 4096);
-  }
-}
-
-void light_2_OFF()
-{
-  for (int led=3; led <= 5; led++)
-  {
-        ledDriver.setVal(led, 0);
-  }
-}
-////////////////////////////////////////////////////////////
-void setRelayandLEDstate()
+void setRelaystate()
 {
   mcp1.digitalWrite(11, state_48V);
   mcp2.digitalWrite(11, state_PUMP);
   mcp2.digitalWrite(12, state_ACC1);
   mcp2.digitalWrite(13, state_ACC2);
   mcp2.digitalWrite(14, state_ACC3);
+}
+///////////////////////////////////////////////////////////
+void setLEDstate()
+{
+  if(LED1state == 1)
+  {
+    for (int led=0; led <= 2; led++)
+    {
+      ledDriver.setVal(led, 4096);
+    }
+  }
+  else
+  {
+    for (int led=0; led <= 2; led++)
+    {
+      ledDriver.setVal(led, 0);
+    }
 
-  //Add LEDs
+  }
+  if( LED2state == 1)
+  {
+    for (int led=3; led <= 5; led++)
+    {
+      ledDriver.setVal(led, 4096);
+    }
+  }
+  else
+  {
+    for (int led=3; led <= 5; led++)
+    {
+      ledDriver.setVal(led, 0);
+    }
+  }
 }
 ////////////////////////////////////////////////////////////
 void printOLED1()
@@ -262,14 +265,14 @@ void printOLED1()
   oled.clear(PAGE);
 
   //Print current power consumption from current clamp
-  currentWatts = getCurrentPower_Clamp(CURRENT_SENSOR_PIN);
+  //currentWatts = getCurrentPower_Clamp(CURRENT_SENSOR_PIN);
   oled.setCursor(0,0);
   oled.print("TOTAL PWR:");
   oled.setCursor(0,10);
-  oled.print(currentWatts);
+  oled.print(system_watts);
   oled.print("W ");
   oled.setCursor(0,20);
-  oled.print(currentWatts/120.0);
+  oled.print(system_amps);
   oled.print("A");
 
   //Print current time from RTC
@@ -302,7 +305,7 @@ void getPowerConsumption()
   setMuxPump();
   delay(10);
   getCurrent_ACS712(rlyMuxIn);
-  pumpARead = sensorValue;
+  //pumpARead = average;
   PUMP_A = current;
 
   setMux5V();
@@ -322,53 +325,44 @@ void getPowerConsumption()
 
   currentWatts = getCurrentPower_Clamp(CURRENT_SENSOR_PIN);
   system_watts = currentWatts;
-  system_amps = currentWatts/120.0;
+  system_amps = currentWatts/vRMS;
 }
 ////////////////////////////////////////////////////////////
 void getCurrent_ACS712(int pinValue)
 {
   //The on-board ADC is 12-bits -> 2^10 = 4096
-  for(int i=0;i<NUM_SAMPLES;i++)
+  average = 0;
+  sensorValue = 0;
+  for(int i = 0; i<NUM_SAMPLES; i++)
   {
-    sensorValue+=analogRead(pinValue); //read the current from sensor
-    delay(2);
+    sensorValue += analogRead(pinValue); //read the current from sensor
+    //delay(2);
   }
-  sensorValue = sensorValue/ NUM_SAMPLES;
-  voltage = (sensorValue * 3.3)/4095;
-  current = abs((voltage - 2.51) / 0.100);//0.082);
-
-/*
-  sensorValue = analogRead(pinValue);
-  voltage = (sensorValue / 4095.0)* 5000;// Gets you mV
-  current = (voltage - 2500) / 100;
+  average = sensorValue / NUM_SAMPLES;
+  voltage = (average * 3.3)/4095;
 
 
-*/
+  //sensorValue = analogRead(pinValue);
+  //voltage = (sensorValue * 3.3)/4095;
+  current = abs((voltage - 2.51) / 0.100);
+
 }
 ////////////////////////////////////////////////////////////
-float getCurrentPower_Clamp(int pin) {
-
-  // RMS voltage
-  const double vRMS = 120.0;      // Assumed or measured
-
-  // Parameters for measuring RMS current
-  const double offset = 1.65;     // Half the ADC max voltage
-  const int numTurns = 2000;      // 1:2000 transformer turns
-  const int rBurden = 100;        // Burden resistor value
-
-  int sample;
-  double voltage;
-  double iPrimary;
+float getCurrentPower_Clamp(int pin)
+{
+  int sample = 0;
+  double voltage = 0;
+  double iPrimary = 0;
   double acc = 0;
-  double iRMS;
-  double apparentPower;
+  double iRMS = 0;
+  double apparentPower = 0;
 
   // Take a number of samples and calculate RMS current
   for ( int i = 0; i < avgSamples; i++ ) {
 
       // Read ADC, convert to voltage, remove offset
       sample = analogRead(pin);
-      voltage = (sample * 3.3) / 4096;
+      voltage = (sample * 3.3) / 4095;
       voltage = voltage - offset;
 
       // Calculate the sensed current
