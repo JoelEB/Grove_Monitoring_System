@@ -61,6 +61,9 @@ int LED2value = 0;
 
 //count variable for timing events
 int displayCounter = 10;
+
+// 24hr timer for resyncing cloud time
+unsigned long updateCTime;
 ////////////////////////////////////////////////////////////
 void setup()
 {
@@ -94,8 +97,12 @@ void setup()
   Particle.variable("LED1value", LED1value);
   Particle.variable("LED2value", LED2value);
 */
-
+  //Initialize onboard real time clock
   rtc.begin();
+  //Sync Photon with Internet time and set time zone
+  //Time.zone(-6);
+  Particle.syncTime();
+  updateCTime = millis();
 
   oled.begin();    // Initialize the OLED
   oled.clear(ALL); // Clear the display's internal memory
@@ -127,10 +134,16 @@ void setup()
     mcp2.digitalWrite(i, LOW);
     mcp3.digitalWrite(i, LOW);
   }
+
+
 }
 ////////////////////////////////////////////////////////////
 void loop()
 {
+  // DST adjstment
+  bool daylightSavings = IsDST(Time.day(), Time.month(), Time.weekday());
+  Time.zone(daylightSavings? -6 : -7);
+
   setRelaystate();
   getPowerConsumption();
   if(displayCounter == 10)
@@ -140,6 +153,16 @@ void loop()
   }
   displayCounter++;
 
+
+
+  // Re-sync cloud time every 24 hrs
+  /*
+  if ((millis() - updateCTime) > (24UL * 60UL * 60UL * 1000UL))
+  {
+    Particle.syncTime();
+    updateCTime = millis();
+  }
+  */
 }
 ////////////////////////////////////////////////////////////
 //////////Particle.functions to send to Node-Red////////////
@@ -276,6 +299,7 @@ void printOLED1()
   oled.print("A");
 
   //Print current time from RTC
+  /*
   rtc.update();
   oled.setCursor(0,40);
   oled.print(String(rtc.hour()) + ":"); // Print hour
@@ -285,6 +309,19 @@ void printOLED1()
   if (rtc.second() < 10)
     oled.print('0'); // Print leading '0' for second
   oled.print(String(rtc.second())); // Print second
+  */
+
+  //Print current time from Internet
+  oled.setCursor(0,40);
+  oled.print(String(Time.hour()) + "::"); // Print hour
+  if (Time.minute() < 10)
+    oled.print('0'); // Print leading '0' for minute
+  oled.print(String(Time.minute()) + ":"); // Print minute
+  if (Time.second() < 10)
+    oled.print('0'); // Print leading '0' for second
+  oled.print(String(Time.second())); // Print second
+
+
 
   oled.display();
 
@@ -378,6 +415,23 @@ float getCurrentPower_Clamp(int pin)
   // Calculate apparent power and return it
   apparentPower = vRMS * iRMS;
   return apparentPower;
+}
+/////////////////////////////////////////////////////////////
+bool IsDST(int dayOfMonth, int month, int dayOfWeek)
+{
+	if (month < 3 || month > 11) {
+		return false;
+	}
+	if (month > 3 && month < 11) {
+		return true;
+	}
+
+	int previousSunday = dayOfMonth - (dayOfWeek - 1);
+	if (month == 3)
+  {
+		return previousSunday >= 8;
+	}
+	return previousSunday <= 0;
 }
 ////////////////////////////////////////////////////////////
 //The following Functions Set the S0,S1, and S2 pins on the

@@ -1,0 +1,153 @@
+EESchema Schematic File Version 4
+LIBS:Grove_Monitor-cache
+EELAYER 26 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 6 7
+Title ""
+Date ""
+Rev ""
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+$Comp
+L SparkFun-Connectors:AUDIO_JACK_3.5MM_SMD J1
+U 1 1 5C69F408
+P 3600 2500
+AR Path="/5C69D170/5C69F408" Ref="J1"  Part="1" 
+AR Path="/5C6A2AB7/5C69F408" Ref="J2"  Part="1" 
+F 0 "J2" H 3581 2867 45  0000 C CNN
+F 1 "AUDIO_JACK_3.5MM_SMD" H 3581 2783 45  0000 C CNN
+F 2 "Connectors:AUDIO-JACK-3.5MM-SMD" H 3600 2850 20  0001 C CNN
+F 3 "" H 3600 2500 50  0001 C CNN
+F 4 "CONN-10353" H 3581 2794 60  0001 C CNN "Field4"
+	1    3600 2500
+	1    0    0    -1  
+$EndComp
+Text Notes 3200 2750 0    60   ~ 0
+TIP
+Text Notes 3100 2500 0    60   ~ 0
+RING
+Text Notes 3000 2400 0    60   ~ 0
+SLEEVE
+$Comp
+L Device:R R13
+U 1 1 5C69F4E2
+P 4150 2500
+AR Path="/5C69D170/5C69F4E2" Ref="R13"  Part="1" 
+AR Path="/5C6A2AB7/5C69F4E2" Ref="R16"  Part="1" 
+F 0 "R16" H 4220 2546 50  0000 L CNN
+F 1 "100" H 4220 2455 50  0000 L CNN
+F 2 "Resistor_SMD:R_0603_1608Metric" V 4080 2500 50  0001 C CNN
+F 3 "~" H 4150 2500 50  0001 C CNN
+	1    4150 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:R R14
+U 1 1 5C69F51F
+P 4450 2100
+AR Path="/5C69D170/5C69F51F" Ref="R14"  Part="1" 
+AR Path="/5C6A2AB7/5C69F51F" Ref="R17"  Part="1" 
+F 0 "R17" H 4380 2054 50  0000 R CNN
+F 1 "10k" H 4380 2145 50  0000 R CNN
+F 2 "Resistor_SMD:R_0603_1608Metric" V 4380 2100 50  0001 C CNN
+F 3 "~" H 4450 2100 50  0001 C CNN
+	1    4450 2100
+	-1   0    0    1   
+$EndComp
+$Comp
+L Device:R R15
+U 1 1 5C69F55F
+P 4450 2500
+AR Path="/5C69D170/5C69F55F" Ref="R15"  Part="1" 
+AR Path="/5C6A2AB7/5C69F55F" Ref="R18"  Part="1" 
+F 0 "R18" H 4520 2546 50  0000 L CNN
+F 1 "10k" H 4520 2455 50  0000 L CNN
+F 2 "Resistor_SMD:R_0603_1608Metric" V 4380 2500 50  0001 C CNN
+F 3 "~" H 4450 2500 50  0001 C CNN
+	1    4450 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:CP1 C19
+U 1 1 5C69F5F1
+P 4800 2500
+AR Path="/5C69D170/5C69F5F1" Ref="C19"  Part="1" 
+AR Path="/5C6A2AB7/5C69F5F1" Ref="C20"  Part="1" 
+F 0 "C20" H 4915 2546 50  0000 L CNN
+F 1 "10uF" H 4915 2455 50  0000 L CNN
+F 2 "Capacitors:CPOL-RADIAL-2.5MM-5MM" H 4800 2500 50  0001 C CNN
+F 3 "~" H 4800 2500 50  0001 C CNN
+	1    4800 2500
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:+3.3V #PWR0130
+U 1 1 5C69F676
+P 4450 1900
+AR Path="/5C69D170/5C69F676" Ref="#PWR0130"  Part="1" 
+AR Path="/5C6A2AB7/5C69F676" Ref="#PWR0132"  Part="1" 
+F 0 "#PWR0132" H 4450 1750 50  0001 C CNN
+F 1 "+3.3V" H 4465 2073 50  0000 C CNN
+F 2 "" H 4450 1900 50  0001 C CNN
+F 3 "" H 4450 1900 50  0001 C CNN
+	1    4450 1900
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	3800 2300 4150 2300
+Wire Wire Line
+	4150 2300 4150 2350
+Wire Wire Line
+	3800 2700 4150 2700
+Wire Wire Line
+	4150 2700 4150 2650
+Wire Wire Line
+	4150 2300 4450 2300
+Wire Wire Line
+	4450 2300 4450 2250
+Connection ~ 4150 2300
+Wire Wire Line
+	4450 2300 4450 2350
+Connection ~ 4450 2300
+Wire Wire Line
+	4450 1900 4450 1950
+$Comp
+L power:GND #PWR0131
+U 1 1 5C69F7FE
+P 4450 2750
+AR Path="/5C69D170/5C69F7FE" Ref="#PWR0131"  Part="1" 
+AR Path="/5C6A2AB7/5C69F7FE" Ref="#PWR0133"  Part="1" 
+F 0 "#PWR0133" H 4450 2500 50  0001 C CNN
+F 1 "GND" H 4455 2577 50  0000 C CNN
+F 2 "" H 4450 2750 50  0001 C CNN
+F 3 "" H 4450 2750 50  0001 C CNN
+	1    4450 2750
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	4450 2750 4450 2700
+Wire Wire Line
+	4800 2350 4800 2300
+Wire Wire Line
+	4800 2300 4450 2300
+Wire Wire Line
+	4800 2650 4800 2700
+Wire Wire Line
+	4450 2700 4800 2700
+Connection ~ 4450 2700
+Wire Wire Line
+	4450 2700 4450 2650
+Wire Wire Line
+	4150 2700 4150 3050
+Connection ~ 4150 2700
+Text HLabel 4100 3050 0    60   Input ~ 0
+OUT
+Wire Wire Line
+	4100 3050 4150 3050
+$EndSCHEMATC
