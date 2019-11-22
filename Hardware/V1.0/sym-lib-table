@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name Grove_Monitor-rescue)(type Legacy)(uri ${KIPRJMOD}/Grove_Monitor-rescue.lib)(options "")(descr ""))
+)
